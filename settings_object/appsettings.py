@@ -7,33 +7,17 @@ import re
 
 from django.utils.module_loading import import_string
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.six import with_metaclass
 
 
-class SettingsObject:
-    """
-    Object representing a collection of settings.
-
-    Args:
-        name: The name of the settings object.
-        user_settings: A dictionary of user settings. OPTIONAL. If not given,
-                       use ``django.conf.settings.<name>``.
-    """
-    def __init__(self, name, user_settings = None):
-        self.name = name
-        if user_settings is None:
-            from django.conf import settings
-            user_settings = getattr(settings, self.name, {})
-        self.user_settings = user_settings
-
-
-class Setting:
+class Setting(object):
     """
     Property descriptor for a setting.
 
     Args:
-        default: Provides a default for the setting. If a callable is given, it
-                 is called with the owning py:class:`SettingsObject` as it's only
-                 argument. Defaults to ``NO_DEFAULT``.
+    default: Provides a default for the setting. If a callable is given, it
+             is called with the owning py:class:`SettingsObject` as it's only
+             argument. Defaults to ``NO_DEFAULT``.
     """
     #: Sentinel object representing no default. A sentinel is required because
     #: ``None`` is a valid default value.
@@ -65,13 +49,45 @@ class Setting:
         raise AttributeError('Settings are read-only')
 
 
+class SettingsMeta(type):
+    """
+    Metaclass that injects setting names onto the property descriptors.
+    """
+    def __new__(self, name, bases, namespace):
+        klass = super(SettingsMeta, self).__new__(self, name, bases, namespace)
+        # For every attribute that is a Setting, set it's name
+        for prop_name, prop in namespace.items():
+            if isinstance(prop, Setting):
+                prop.__set_name__(klass, prop_name)
+        return klass
+
+
+class SettingsObject(with_metaclass(SettingsMeta)):
+    """
+    Object representing a collection of settings.
+
+    Args:
+        name: The name of the settings object.
+        user_settings: A dictionary of user settings. OPTIONAL. If not given,
+                       use ``django.conf.settings.<name>``.
+    """
+    def __init__(self, name, user_settings = None):
+        self.name = name
+        if user_settings is None:
+            from django.conf import settings
+            user_settings = getattr(settings, self.name, {})
+        self.user_settings = user_settings
+
+
 class ImportStringSetting(Setting):
     """
     Property descriptor for a setting that is a dotted-path string that should be
     imported.
     """
     def __get__(self, instance, owner):
-        return import_string(super().__get__(instance, owner))
+        return import_string(
+            super(ImportStringSetting, self).__get__(instance, owner)
+        )
 
 
 class ObjectFactorySetting(Setting):
@@ -94,7 +110,7 @@ class ObjectFactorySetting(Setting):
     ARG_NAME_REGEX = r"'(\w+)'"
 
     def __get__(self, instance, owner):
-        factory_definition = super().__get__(instance, owner)
+        factory_definition = super(ObjectFactorySetting, self).__get__(instance, owner)
         factory = import_string(factory_definition['FACTORY'])
         kwargs = { k.lower(): v for k, v in factory_definition['PARAMS'].items() }
         # We want to convert type errors for missing or invalid arguments into
