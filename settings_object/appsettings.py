@@ -8,7 +8,6 @@ from functools import reduce
 
 from django.utils.module_loading import import_string
 from django.core.exceptions import ImproperlyConfigured
-from django.utils.six import with_metaclass
 
 
 def import_callable(python_path):
@@ -71,20 +70,7 @@ class Setting(object):
         raise AttributeError('Settings are read-only')
 
 
-class SettingsMeta(type):
-    """
-    Metaclass that injects setting names onto the property descriptors.
-    """
-    def __new__(self, name, bases, namespace):
-        klass = super(SettingsMeta, self).__new__(self, name, bases, namespace)
-        # For every attribute that is a Setting, set it's name
-        for prop_name, prop in namespace.items():
-            if isinstance(prop, Setting):
-                prop.__set_name__(klass, prop_name)
-        return klass
-
-
-class SettingsObject(with_metaclass(SettingsMeta)):
+class SettingsObject:
     """
     Object representing a collection of settings.
 
