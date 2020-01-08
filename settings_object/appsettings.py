@@ -31,7 +31,24 @@ def import_callable(python_path):
     return reduce(getattr, attribute_parts, imported_mod)
 
 
-class Setting(object):
+class SettingsObject:
+    """
+    Object representing a collection of settings.
+
+    Args:
+        name: The name of the settings object.
+        user_settings: A dictionary of user settings. OPTIONAL. If not given,
+                       use ``django.conf.settings.<name>``.
+    """
+    def __init__(self, name, user_settings = None):
+        self.name = name
+        if user_settings is None:
+            from django.conf import settings
+            user_settings = getattr(settings, self.name, {})
+        self.user_settings = user_settings
+
+
+class Setting:
     """
     Property descriptor for a setting.
 
@@ -63,28 +80,32 @@ class Setting(object):
         # This is provided as a separate method for easier overriding
         if self.default is self.NO_DEFAULT:
             raise ImproperlyConfigured('Required setting: {}.{}'.format(instance.name, self.name))
-        return self.default(instance) if callable(self.default) else self.default
+        elif callable(self.default):
+            try:
+                return self.default(instance)
+            except TypeError:
+                return self.default()
+        else:
+            return self.default
 
     def __set__(self, instance, value):
         # This method exists so that the descriptor is considered a data-descriptor
         raise AttributeError('Settings are read-only')
 
 
-class SettingsObject:
+class MergedDictSetting(Setting):
     """
-    Object representing a collection of settings.
+    Property descriptor for a setting that comprises of a dictionary of defaults
+    that is merged with the user-provided value.
+    """
+    def __init__(self, defaults):
+        self.defaults = defaults
+        super().__init__(default = dict)
 
-    Args:
-        name: The name of the settings object.
-        user_settings: A dictionary of user settings. OPTIONAL. If not given,
-                       use ``django.conf.settings.<name>``.
-    """
-    def __init__(self, name, user_settings = None):
-        self.name = name
-        if user_settings is None:
-            from django.conf import settings
-            user_settings = getattr(settings, self.name, {})
-        self.user_settings = user_settings
+    def __get__(self, instance, owner):
+        merged = self.defaults.copy()
+        merged.update(super().__get__(instance, owner))
+        return merged
 
 
 class ImportStringSetting(Setting):
