@@ -108,6 +108,23 @@ class MergedDictSetting(Setting):
         return merged
 
 
+class NestedSetting(Setting):
+    """
+    Property descriptor for a setting whose value is a nested settings object.
+    """
+    def __init__(self, settings_class):
+        self.settings_class = settings_class
+        super().__init__(default = dict)
+
+    def __get__(self, instance, owner):
+        # Use the value of the setting as user values for an instance of the
+        # nested settings class, and return that
+        return self.settings_class(
+            '{}.{}'.format(instance.name, self.name),
+            super().__get__(instance, owner)
+        )
+
+
 class ImportStringSetting(Setting):
     """
     Property descriptor for a setting that is a dotted-path string that should be
