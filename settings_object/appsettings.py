@@ -5,9 +5,13 @@ Settings utilities for Django apps.
 
 import re
 from functools import reduce
+from importlib import import_module
 
-from django.utils.module_loading import import_string
-from django.core.exceptions import ImproperlyConfigured
+try:
+    from django.core.exceptions import ImproperlyConfigured
+except ImportError:
+    class ImproperlyConfigured(RuntimeError):
+        pass
 
 
 def import_callable(python_path):
@@ -21,12 +25,12 @@ def import_callable(python_path):
     # Keep removing parts from the path until we find a module
     while imported_mod is None and module_parts:
         try:
-            imported_mod = import_string('.'.join(module_parts))
+            imported_mod = import_module('.'.join(module_parts))
         except ModuleNotFoundError:
             attribute_parts.insert(0, module_parts.pop())
     # If no module was found, raise a module not found error for the original path
     if imported_mod is None:
-        _ = import_string(python_path)
+        _ = import_module(python_path)
     # Otherwise, use getattr to traverse the attribute parts
     return reduce(getattr, attribute_parts, imported_mod)
 
@@ -165,7 +169,7 @@ class ObjectFactorySetting(Setting):
             # Process the params for nested factory definitions
             kwargs = {
                 k.lower(): self._process_item(v, '{}.PARAMS.{}'.format(prefix, k))
-                for k, v in item['PARAMS'].items()
+                for k, v in item.get('PARAMS', {}).items()
             }
             # We want to convert type errors for missing or invalid arguments into
             # errors about missing or invalid settings
